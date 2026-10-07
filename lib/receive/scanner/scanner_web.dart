@@ -81,6 +81,11 @@ class _WebScanner implements QrScanner {
           .toDart;
       final json = jsonDecode(info.toDart) as Map<String, dynamic>;
       _currentDevice = json['deviceId'] as String?;
+      // Mirror user-facing cameras (laptop webcams, selfie cams) so aiming
+      // feels natural. Only the preview is flipped; decoding uses raw frames.
+      _video.style.transform = json['facingMode'] == 'environment'
+          ? 'none'
+          : 'scaleX(-1)';
       // Labels and the full list are only available after permission.
       final cameras = jsonDecode((await _scannerJs.listCameras().toDart).toDart)
           as List<dynamic>;
