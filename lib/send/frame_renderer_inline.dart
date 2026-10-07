@@ -18,9 +18,14 @@ class _InlineRenderer implements FrameRenderer {
   final FountainEncoder _encoder;
 
   @override
-  Future<QrMatrix> render(int seq, int count, QrErrorCorrectLevel ecc) async {
+  Future<QrMatrix> render(
+    int seq,
+    int count,
+    QrErrorCorrectLevel ecc, {
+    bool fixedMask = false,
+  }) async {
     await Future<void>.delayed(Duration.zero);
-    return renderFrame(_encoder, seq, count, ecc);
+    return renderFrame(_encoder, seq, count, ecc, fixedMask: fixedMask);
   }
 
   @override

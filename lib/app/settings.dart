@@ -52,6 +52,20 @@ class AppSettings extends ChangeNotifier {
   SpeedLevel get defaultLevel => SpeedLevel.byName(_prefs.getString('level'));
   set defaultLevel(SpeedLevel value) => _set('level', value.name);
 
+  OverclockConfig get overclock => OverclockConfig(
+    version: _prefs.getInt('ocVersion') ?? 40,
+    framesPerSecond: _prefs.getInt('ocFps') ?? 20,
+    codesPerScreen: _prefs.getInt('ocCodes') ?? 2,
+  );
+  set overclock(OverclockConfig value) {
+    _prefs.setInt('ocVersion', value.version);
+    _prefs.setInt('ocFps', value.framesPerSecond);
+    _set('ocCodes', value.codesPerScreen);
+  }
+
+  /// Parameters for [level], resolving overclock from the stored tuning.
+  TransferProfile profileFor(SpeedLevel level) => level.profile(overclock);
+
   bool get compress => _prefs.getBool('compress') ?? true;
   set compress(bool value) => _set('compress', value);
 
@@ -65,6 +79,11 @@ class AppSettings extends ChangeNotifier {
         PlatformInfo.isMobile ? CameraQuality.veryHigh : CameraQuality.high,
   );
   set cameraQuality(CameraQuality value) => _set('cameraQuality', value.name);
+
+  /// Requested camera frame rate; 60 helps with overclocked senders on
+  /// phones whose camera supports it.
+  int get cameraFps => _prefs.getInt('cameraFps') ?? 30;
+  set cameraFps(int value) => _set('cameraFps', value);
 
   /// Target folder for received files on desktop; null means the default.
   String? get saveDirectory => _prefs.getString('saveDirectory');

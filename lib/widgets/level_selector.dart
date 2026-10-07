@@ -6,6 +6,7 @@ IconData levelIcon(SpeedLevel level) => switch (level) {
   SpeedLevel.fast => Icons.bolt_rounded,
   SpeedLevel.balanced => Icons.balance_rounded,
   SpeedLevel.slow => Icons.hourglass_bottom_rounded,
+  SpeedLevel.overclock => Icons.rocket_launch_rounded,
 };
 
 String levelDescription(SpeedLevel level) => switch (level) {
@@ -17,6 +18,10 @@ String levelDescription(SpeedLevel level) => switch (level) {
   SpeedLevel.slow =>
     'Grobe Codes, die langsam wechseln. Für schwache Displays, ältere '
         'Geräte und schlechte Kameras.',
+  SpeedLevel.overclock =>
+    'Reizt Displayauflösung und Kamera-Bildrate aus: bis QR-Version 40, '
+        'mehrere Codes gleichzeitig und bis zu 60 Wechsel pro Sekunde. Für '
+        'High-End-Geräte – Werte unten feinjustieren.',
 };
 
 class LevelSelector extends StatelessWidget {
@@ -35,16 +40,21 @@ class LevelSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Icons and labels do not fit three across on narrow phones.
-        final withIcons = constraints.maxWidth >= 480;
+        // Four labelled segments do not fit on phones: there only the
+        // selected one keeps its label, and in very narrow panels none does.
+        final allLabels = constraints.maxWidth >= 560;
+        final selectedLabel = constraints.maxWidth >= 400;
         return SegmentedButton<SpeedLevel>(
           showSelectedIcon: false,
           segments: [
             for (final level in SpeedLevel.values)
               ButtonSegment(
                 value: level,
-                icon: withIcons ? Icon(levelIcon(level)) : null,
-                label: Text(level.label, maxLines: 1, softWrap: false),
+                tooltip: level.label,
+                icon: Icon(levelIcon(level)),
+                label: allLabels || (selectedLabel && level == value)
+                    ? Text(level.label, maxLines: 1, softWrap: false)
+                    : null,
               ),
           ],
           selected: {value},

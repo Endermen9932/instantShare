@@ -34,9 +34,25 @@ Browser und braucht keinen Server. Einrichtung: [docs/GITHUB_PAGES.md](docs/GITH
 
 | Stufe | QR-Code | Wechsel | Rohdaten | Gedacht für |
 |---|---|---|---|---|
-| **Schnell** | Version 25 (117 × 117 Module), Fehlerkorrektur L | 12 / s | ≈ 13,5 KB/s | scharfe Displays, gute Kameras |
+| **Schnell** | Version 25 (117 × 117 Module), Fehlerkorrektur L | 12 / s | ≈ 14,6 KB/s | scharfe Displays, gute Kameras |
 | **Ausgewogen** | Version 18 (89 × 89), M | 7 / s | ≈ 3,5 KB/s | die meisten Geräte |
 | **Langsam** | Version 10 (57 × 57), Q | 4 / s | ≈ 0,5 KB/s | schwache Displays, alte Geräte, schlechte Kameras |
+| **Overclock** | einstellbar bis Version 40 (177 × 177), L, 1–3 Codes gleichzeitig | 5–60 / s | bis > 300 KB/s (Standard: 2 × v40 bei 20 / s ≈ 110 KB/s) | High-End-Handys und schnelle Laptops |
+
+### Overclock
+
+Overclock reizt aus, was Display und Kamera hergeben:
+
+- **Dichte bis QR-Version 40** – 2,8 KB pro Code. Die App zeigt live an, wie viele Pixel ein
+  Modul auf dem Display hat (≥ 4 px/Modul sind ideal).
+- **Mehrere Codes gleichzeitig** nutzen die ganze Fläche: am Laptop nebeneinander, am Handy
+  untereinander. Der Empfänger liest bis zu 4 Codes pro Kamerabild – Handy dabei quer halten.
+- **Bis 60 Wechsel pro Sekunde.** Mehr als ~25/s bringt meist wenig, weil die Kamera dann
+  Übergänge erwischt; dichtere Codes oder mehr Codes gleichzeitig skalieren besser.
+- **Empfänger:** dekodiert parallel auf bis zu 4 CPU-Kernen; unter *Einstellungen → 60 fps
+  Kamera* liest ein Handy doppelt so viele Bilder, falls die Kamera das kann.
+
+Alle Werte lassen sich während der Übertragung ändern, ohne dass Fortschritt verloren geht.
 
 Die Stufe lässt sich **während der Übertragung** wechseln, ohne dass der Empfänger etwas
 verliert. Texte und Dokumente werden vorher komprimiert und sind dadurch meist deutlich

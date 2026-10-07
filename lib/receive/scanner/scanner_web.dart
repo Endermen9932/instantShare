@@ -9,7 +9,7 @@ import 'package:web/web.dart' as web;
 import '../../app/settings.dart';
 import 'scanner.dart';
 
-QrScanner createScanner(CameraQuality quality) => _WebScanner();
+QrScanner createScanner(CameraQuality quality, int fps) => _WebScanner();
 
 @JS('instantShareScanner')
 external _ScannerJs get _scannerJs;

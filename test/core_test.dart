@@ -9,6 +9,8 @@ import 'package:instant_share/core/container.dart';
 import 'package:instant_share/core/crc32.dart';
 import 'package:instant_share/core/fountain.dart';
 import 'package:instant_share/core/frame.dart';
+import 'package:instant_share/core/speed.dart';
+import 'package:qr/qr.dart';
 
 Uint8List randomBytes(int n, int seed) {
   final r = Random(seed);
@@ -168,6 +170,22 @@ void main() {
     }
     expect(header.title, 'urlaub.png');
     expect(dec.isComplete, isFalse);
+  });
+
+  test('frames fill their QR version', () {
+    expect(symbolsForVersion(25, QrErrorCorrectLevel.low), 19);
+    expect(symbolsForVersion(40, QrErrorCorrectLevel.low), 44);
+    for (final level in SpeedLevel.values) {
+      final profile = level.profile(const OverclockConfig());
+      final version = QrCode(
+        payload: QrPayload()
+          ..addAlphaNumeric('Z' * Frame.encodedLength(profile.symbolsPerFrame)),
+        errorCorrectLevel: profile.errorCorrection,
+      ).typeNumber;
+      expect(version, lessThanOrEqualTo(40), reason: level.name);
+    }
+    final oc = const OverclockConfig(version: 40, framesPerSecond: 20, codesPerScreen: 2).profile;
+    expect(oc.bytesPerSecond, 44 * 64 * 40);
   });
 
   test('container round trip for files and text', () {

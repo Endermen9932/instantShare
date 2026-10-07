@@ -32,9 +32,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Übertragung starten'), findsOneWidget);
 
-      await tester.tap(find.text('Schnell').first);
+      await tester.tap(find.byTooltip('Schnell').first);
       await tester.pumpAndSettle();
       expect(find.textContaining('12 Codes/s'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Overclock').first);
+      await tester.pumpAndSettle();
+      final tuner = find.textContaining('40 Codes/s');
+      await tester.scrollUntilVisible(tuner, 200);
+      expect(tuner, findsOneWidget);
 
       await tester.tap(find.text('Empfangen').last);
       await tester.pumpAndSettle();

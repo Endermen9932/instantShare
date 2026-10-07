@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:camera/camera.dart';
 import 'package:camera_desktop/camera_desktop.dart';
 import 'package:flutter/foundation.dart';
@@ -6,16 +8,19 @@ import 'package:flutter_zxing/flutter_zxing.dart' as zxing;
 
 import '../../app/settings.dart';
 import '../../util/platform_info.dart';
+import 'decode_pool.dart';
 import 'scanner.dart';
 
-QrScanner createScanner(CameraQuality quality) => _NativeScanner(quality);
+QrScanner createScanner(CameraQuality quality, int fps) =>
+    _NativeScanner(quality, fps);
 
 /// `camera` (CameraX on Android, camera_desktop on Linux/Windows) for the
-/// frames, zxing-cpp through FFI on a background isolate for decoding.
+/// frames, zxing-cpp through FFI on a pool of isolates for decoding.
 class _NativeScanner implements QrScanner {
-  _NativeScanner(this._quality);
+  _NativeScanner(this._quality, this._fps);
 
   final CameraQuality _quality;
+  final int _fps;
   final ValueNotifier<ScannerState> _state = ValueNotifier(
     ScannerState.stopped,
   );
@@ -24,8 +29,7 @@ class _NativeScanner implements QrScanner {
   int _cameraIndex = 0;
   CameraController? _controller;
   void Function(String text)? _onCode;
-  bool _processing = false;
-  bool _busy = false;
+  DecodePool? _pool;
   int _framesAnalyzed = 0;
   double _maxZoom = 1;
   String? _error;
@@ -69,14 +73,15 @@ class _NativeScanner implements QrScanner {
         _fail('Keine Kamera gefunden.');
         return;
       }
-      if (!_processing) {
-        await zxing.zx.startCameraProcessing();
-        _processing = true;
-      }
+      _pool ??= await DecodePool.start(
+        DecodePool.defaultSize(Platform.numberOfProcessors),
+      );
       final controller = CameraController(
         _cameras[_cameraIndex],
         _preset,
         enableAudio: false,
+        // Only ask for more than the default where a camera may deliver it.
+        fps: PlatformInfo.isAndroid && _fps > 30 ? _fps : null,
         imageFormatGroup: PlatformInfo.isAndroid
             ? ImageFormatGroup.yuv420
             : ImageFormatGroup.bgra8888,
@@ -123,37 +128,25 @@ class _NativeScanner implements QrScanner {
   };
 
   void _onFrame(CameraImage image) {
-    if (_busy || !_processing) return;
+    final pool = _pool;
+    // Drop frames while every decoder is busy; the fountain code needs no
+    // particular frame, only as many as possible.
+    if (pool == null || pool.inFlight >= pool.size) return;
     final format = zxing.cameraImageFormat(image);
     if (format == zxing.ImageFormat.none) return;
-    _busy = true;
-    // A centred square is where the user aims; scanning only that keeps
-    // decoding fast on large frames.
-    final side = image.width < image.height ? image.width : image.height;
-    final params = zxing.DecodeParams(
-      imageFormat: format,
-      format: zxing.Format.qrCode,
-      width: image.width,
-      height: image.height,
-      cropLeft: (image.width - side) ~/ 2,
-      cropTop: (image.height - side) ~/ 2,
-      cropWidth: side,
-      cropHeight: side,
-      tryHarder: false,
-      tryRotate: false,
-      tryInverted: false,
-      tryDownscale: true,
-      maxNumberOfSymbols: 1,
-    );
-    zxing.zx
-        .processCameraImage(image, params)
-        .then((code) {
-          _framesAnalyzed++;
-          final text = code.text;
-          if (code.isValid && text != null) _onCode?.call(text);
-        })
-        .catchError((Object _) {})
-        .whenComplete(() => _busy = false);
+    zxing.convertImage(image).then((pixels) async {
+      if (pixels.isEmpty) return;
+      final texts = await pool.decode(
+        pixels,
+        image.width,
+        image.height,
+        format,
+      );
+      _framesAnalyzed++;
+      for (final text in texts) {
+        _onCode?.call(text);
+      }
+    });
   }
 
   @override
@@ -170,11 +163,6 @@ class _NativeScanner implements QrScanner {
       }
       await controller.dispose();
     }
-    if (_processing) {
-      zxing.zx.stopCameraProcessing();
-      _processing = false;
-    }
-    _busy = false;
     if (_state.value != ScannerState.failed) _state.value = ScannerState.stopped;
   }
 
@@ -228,7 +216,10 @@ class _NativeScanner implements QrScanner {
 
   @override
   void dispose() {
-    stop();
+    stop().whenComplete(() {
+      _pool?.close();
+      _pool = null;
+    });
     _state.dispose();
   }
 }

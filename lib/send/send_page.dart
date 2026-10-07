@@ -8,6 +8,7 @@ import '../core/speed.dart';
 import '../util/format.dart';
 import '../util/platform_info.dart';
 import '../widgets/level_selector.dart';
+import '../widgets/overclock_tuner.dart';
 import '../widgets/page_frame.dart';
 import '../widgets/qr_view.dart';
 import 'send_item.dart';
@@ -96,8 +97,9 @@ class _SendPageState extends State<SendPage> {
   Future<void> _start() async {
     final settings = SettingsScope.read(context);
     final level = _level ?? settings.defaultLevel;
+    final profile = settings.profileFor(level);
     final estimate = Duration(
-      seconds: (_totalSize / level.bytesPerSecond).ceil(),
+      seconds: (_totalSize / profile.bytesPerSecond).ceil(),
     );
     if (estimate > const Duration(minutes: 10)) {
       final go = await showDialog<bool>(
@@ -134,6 +136,7 @@ class _SendPageState extends State<SendPage> {
       final controller = TransmitController(
         container: container,
         level: level,
+        profile: profile,
       );
       await controller.start();
       if (!mounted) {
@@ -193,6 +196,7 @@ class _SendPageState extends State<SendPage> {
   Widget build(BuildContext context) {
     final settings = SettingsScope.of(context);
     final level = _level ?? settings.defaultLevel;
+    final profile = settings.profileFor(level);
     final theme = Theme.of(context);
     final canDrop = PlatformInfo.isDesktop || PlatformInfo.isWeb;
 
@@ -259,13 +263,34 @@ class _SendPageState extends State<SendPage> {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          '${level.framesPerSecond} Codes/s · bis ${formatRate(level.bytesPerSecond.toDouble())}'
-          '${_items.isEmpty ? '' : ' · ca. ${formatDuration(Duration(seconds: (_totalSize / level.bytesPerSecond).ceil()))} pro Durchlauf'}',
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: theme.colorScheme.primary,
+        if (level == SpeedLevel.overclock)
+          Card(
+            color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.5),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              child: OverclockTuner(
+                config: settings.overclock,
+                onChanged: (c) => settings.overclock = c,
+              ),
+            ),
+          )
+        else
+          Text(
+            '${profile.codesPerSecond} Codes/s · bis ${formatRate(profile.bytesPerSecond.toDouble())}',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
           ),
-        ),
+        if (_items.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            'ca. ${formatDuration(Duration(seconds: (_totalSize / profile.bytesPerSecond).ceil()))} '
+            'pro Durchlauf (vor Komprimierung)',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        ],
         const SizedBox(height: 28),
         FilledButton.icon(
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(64)),

@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -28,7 +29,10 @@ class ReceiveController extends ChangeNotifier {
   String? _error;
   String? get error => _error;
 
-  String? _lastText;
+  /// Recently seen codes. The camera sees each code many times, and with
+  /// several codes per screen a single "last text" would not catch repeats.
+  final Set<String> _recent = <String>{};
+  final ListQueue<String> _recentOrder = ListQueue<String>();
   int _framesRead = 0;
   int _foreignFrames = 0;
   int? _candidateId;
@@ -73,8 +77,9 @@ class ReceiveController extends ChangeNotifier {
     if (_status == ReceiveStatus.assembling || _status == ReceiveStatus.done) {
       return;
     }
-    if (text == _lastText) return;
-    _lastText = text;
+    if (!_recent.add(text)) return;
+    _recentOrder.add(text);
+    if (_recentOrder.length > 24) _recent.remove(_recentOrder.removeFirst());
     final frame = Frame.decode(text);
     if (frame == null) return;
 
@@ -166,7 +171,8 @@ class ReceiveController extends ChangeNotifier {
     _header = null;
     _payload = null;
     _error = null;
-    _lastText = null;
+    _recent.clear();
+    _recentOrder.clear();
     _framesRead = 0;
     _startedAt = null;
     _lastUseful = null;

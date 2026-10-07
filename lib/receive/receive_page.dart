@@ -87,6 +87,11 @@ class ReceivePage extends StatelessWidget {
                   'Klappt es nicht, am Sender „Langsam“ wählen – der '
                   'Fortschritt bleibt erhalten.',
                 ),
+                const _Tip(
+                  Icons.rocket_launch_rounded,
+                  'Overclock mit mehreren Codes: Handy quer halten, damit '
+                  'alle Codes ins Bild passen.',
+                ),
                 if (PlatformInfo.isWeb)
                   const _Tip(
                     Icons.lock_outline_rounded,

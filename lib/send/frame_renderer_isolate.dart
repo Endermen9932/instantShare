@@ -49,12 +49,17 @@ class _IsolateRenderer implements FrameRenderer {
   bool _disposed = false;
 
   @override
-  Future<QrMatrix> render(int seq, int count, QrErrorCorrectLevel ecc) {
+  Future<QrMatrix> render(
+    int seq,
+    int count,
+    QrErrorCorrectLevel ecc, {
+    bool fixedMask = false,
+  }) {
     if (_disposed) return Completer<QrMatrix>().future;
     final id = _nextId++;
     final completer = Completer<QrMatrix>();
     _pending[id] = completer;
-    _requests.send((id, seq, count, ecc.index));
+    _requests.send((id, seq, count, ecc.index, fixedMask));
     return completer.future;
   }
 
@@ -77,12 +82,14 @@ void _worker((SendPort, TransferableTypedData, int) args) {
   final requests = ReceivePort();
   replies.send(requests.sendPort);
   requests.listen((message) {
-    final (id, seq, count, ecc) = message as (int, int, int, int);
+    final (id, seq, count, ecc, fixedMask) =
+        message as (int, int, int, int, bool);
     final matrix = renderFrame(
       encoder,
       seq,
       count,
       QrErrorCorrectLevel.values[ecc],
+      fixedMask: fixedMask,
     );
     replies.send((
       id,

@@ -3,9 +3,11 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../app/settings.dart';
+import '../core/speed.dart';
 import '../util/format.dart';
 import '../util/screen.dart';
 import '../widgets/level_selector.dart';
+import '../widgets/overclock_tuner.dart';
 import '../widgets/qr_view.dart';
 import 'transmit_controller.dart';
 
@@ -32,6 +34,7 @@ class _TransmitPageState extends State<TransmitPage>
     with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
   bool _fullscreen = false;
+  final ValueNotifier<int> _pixelsPerModule = ValueNotifier(0);
 
   TransmitController get _controller => widget.controller;
 
@@ -46,6 +49,7 @@ class _TransmitPageState extends State<TransmitPage>
   @override
   void dispose() {
     _ticker.dispose();
+    _pixelsPerModule.dispose();
     _controller.dispose();
     keepScreenOn(false);
     boostBrightness(false);
@@ -62,7 +66,10 @@ class _TransmitPageState extends State<TransmitPage>
 
   @override
   Widget build(BuildContext context) {
-    final qr = _QrArea(controller: _controller);
+    final qr = _QrArea(
+      controller: _controller,
+      pixelsPerModule: _pixelsPerModule,
+    );
     if (_fullscreen) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -94,6 +101,7 @@ class _TransmitPageState extends State<TransmitPage>
             final panel = _ControlPanel(
               controller: _controller,
               payloadSize: widget.payloadSize,
+              pixelsPerModule: _pixelsPerModule,
             );
             final qrCard = Padding(
               padding: const EdgeInsets.all(12),
@@ -133,40 +141,74 @@ class _TransmitPageState extends State<TransmitPage>
 }
 
 class _QrArea extends StatelessWidget {
-  const _QrArea({required this.controller});
+  const _QrArea({required this.controller, required this.pixelsPerModule});
 
   final TransmitController controller;
+  final ValueNotifier<int> pixelsPerModule;
+
+  static const double _gap = 12;
 
   @override
   Widget build(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
     return RepaintBoundary(
-      child: ListenableBuilder(
-        listenable: controller,
-        builder: (context, _) {
-          final image = controller.image;
-          if (image == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return QrImageView(image: image);
-        },
+      child: LayoutBuilder(
+        builder: (context, constraints) => ListenableBuilder(
+          listenable: controller,
+          builder: (context, _) {
+            final images = controller.images;
+            if (images.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            // Several codes go along the long side of the area.
+            final horizontal = constraints.maxWidth >= constraints.maxHeight;
+            final n = images.length;
+            final cell = horizontal
+                ? Size((constraints.maxWidth - _gap * (n - 1)) / n,
+                    constraints.maxHeight)
+                : Size(constraints.maxWidth,
+                    (constraints.maxHeight - _gap * (n - 1)) / n);
+            final ppm = (cell.shortestSide * dpr / images.first.width).floor();
+            if (ppm != pixelsPerModule.value) {
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => pixelsPerModule.value = ppm,
+              );
+            }
+            return Flex(
+              direction: horizontal ? Axis.horizontal : Axis.vertical,
+              spacing: _gap,
+              children: [
+                for (final image in images)
+                  Expanded(child: QrImageView(image: image)),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
 }
 
 class _ControlPanel extends StatelessWidget {
-  const _ControlPanel({required this.controller, required this.payloadSize});
+  const _ControlPanel({
+    required this.controller,
+    required this.payloadSize,
+    required this.pixelsPerModule,
+  });
 
   final TransmitController controller;
   final int payloadSize;
+  final ValueNotifier<int> pixelsPerModule;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final settings = SettingsScope.of(context);
     return ListenableBuilder(
-      listenable: controller,
+      listenable: Listenable.merge([controller, pixelsPerModule]),
       builder: (context, _) {
         final level = controller.level;
+        final profile = controller.profile;
         final status = controller.firstPassDone
             ? 'Alle Daten gesendet – läuft weiter, bis der Empfänger fertig ist'
             : 'Erster Durchlauf: ${formatPercent(controller.firstPassProgress)}';
@@ -198,8 +240,13 @@ class _ControlPanel extends StatelessWidget {
                 ),
                 _InfoChip(
                   Icons.speed_rounded,
-                  formatRate(level.bytesPerSecond.toDouble()),
+                  formatRate(profile.bytesPerSecond.toDouble()),
                 ),
+                if (pixelsPerModule.value > 0)
+                  _InfoChip(
+                    Icons.grid_on_rounded,
+                    '${pixelsPerModule.value} px/Modul',
+                  ),
                 _InfoChip(
                   Icons.timer_outlined,
                   'Durchlauf ${formatDuration(controller.passDuration)}',
@@ -210,9 +257,20 @@ class _ControlPanel extends StatelessWidget {
             const SizedBox(height: 16),
             LevelSelector(
               value: level,
-              onChanged: controller.setLevel,
+              onChanged: (l) => controller.setProfile(l, settings.profileFor(l)),
               compact: true,
             ),
+            if (level == SpeedLevel.overclock) ...[
+              const SizedBox(height: 12),
+              OverclockTuner(
+                config: settings.overclock,
+                dense: true,
+                onChanged: (config) {
+                  settings.overclock = config;
+                  controller.setProfile(SpeedLevel.overclock, config.profile);
+                },
+              ),
+            ],
             const SizedBox(height: 16),
             Row(
               children: [

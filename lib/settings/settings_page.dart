@@ -142,6 +142,16 @@ class SettingsPage extends StatelessWidget {
                     },
                   ),
                 ),
+              if (PlatformInfo.isAndroid)
+                SwitchListTile(
+                  title: const Text('60 fps Kamera'),
+                  subtitle: const Text(
+                    'Für den Overclock-Modus: liest doppelt so viele Bilder '
+                    'pro Sekunde, wenn die Kamera es unterstützt.',
+                  ),
+                  value: settings.cameraFps >= 60,
+                  onChanged: (v) => settings.cameraFps = v ? 60 : 30,
+                ),
               if (PlatformInfo.isDesktop) const _SaveFolderTile(),
               if (PlatformInfo.isAndroid)
                 const ListTile(

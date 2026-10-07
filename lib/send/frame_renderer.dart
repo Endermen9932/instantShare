@@ -18,8 +18,11 @@ class QrMatrix {
   final Uint8List modules;
   final int version;
 
-  factory QrMatrix.fromCode(QrCode code) {
-    final image = QrImage(code);
+  /// [maskPattern] skips the search for the best of the eight masks.
+  factory QrMatrix.fromCode(QrCode code, {int? maskPattern}) {
+    final image = maskPattern == null
+        ? QrImage(code)
+        : QrImage.withMaskPattern(code, maskPattern);
     final n = image.moduleCount;
     final modules = Uint8List(n * n);
     for (var r = 0; r < n; r++) {
@@ -44,8 +47,9 @@ QrMatrix renderFrame(
   FountainEncoder encoder,
   int seq,
   int count,
-  QrErrorCorrectLevel ecc,
-) {
+  QrErrorCorrectLevel ecc, {
+  bool fixedMask = false,
+}) {
   final symbols = Uint8List(count * kSymbolSize);
   for (var i = 0; i < count; i++) {
     encoder.writeSymbol(seq + i, symbols, i * kSymbolSize);
@@ -61,6 +65,7 @@ QrMatrix renderFrame(
       payload: QrPayload()..addAlphaNumeric(text),
       errorCorrectLevel: ecc,
     ),
+    maskPattern: fixedMask ? seq % 8 : null,
   );
 }
 
@@ -69,7 +74,12 @@ abstract class FrameRenderer {
   static Future<FrameRenderer> start(Uint8List container, int transferId) =>
       impl.startRenderer(container, transferId);
 
-  Future<QrMatrix> render(int seq, int count, QrErrorCorrectLevel ecc);
+  Future<QrMatrix> render(
+    int seq,
+    int count,
+    QrErrorCorrectLevel ecc, {
+    bool fixedMask = false,
+  });
 
   void dispose();
 }

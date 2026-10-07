@@ -35,7 +35,8 @@
     tryRotate: false,
     tryInvert: false,
     tryDownscale: true,
-    maxNumberOfSymbols: 1,
+    // Overclocked senders show several codes side by side.
+    maxNumberOfSymbols: 4,
   };
 
   function nextFrame(video) {
@@ -53,16 +54,15 @@
       const w = video.videoWidth;
       const h = video.videoHeight;
       if (video.readyState >= 2 && w > 0 && h > 0) {
-        // Scan the centred square only, like the native apps.
-        const side = Math.min(w, h);
-        if (!state.canvas || state.canvas.width !== side) {
+        // Scan the whole frame: several codes may be on screen at once.
+        if (!state.canvas || state.canvas.width !== w || state.canvas.height !== h) {
           state.canvas = document.createElement('canvas');
-          state.canvas.width = side;
-          state.canvas.height = side;
+          state.canvas.width = w;
+          state.canvas.height = h;
           state.ctx = state.canvas.getContext('2d', { willReadFrequently: true });
         }
-        state.ctx.drawImage(video, (w - side) / 2, (h - side) / 2, side, side, 0, 0, side, side);
-        const image = state.ctx.getImageData(0, 0, side, side);
+        state.ctx.drawImage(video, 0, 0, w, h);
+        const image = state.ctx.getImageData(0, 0, w, h);
         try {
           const results = await ZXingWASM.readBarcodes(image, readerOptions);
           state.frames++;

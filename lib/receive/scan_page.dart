@@ -26,7 +26,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _scanner = QrScanner(SettingsScope.read(context).cameraQuality);
+    final settings = SettingsScope.read(context);
+    _scanner = QrScanner(settings.cameraQuality, fps: settings.cameraFps);
     _scanner.start(_receiver.onText).then((_) {
       if (mounted) setState(() {});
     });

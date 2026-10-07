@@ -8,7 +8,8 @@ enum ScannerState { starting, running, failed, stopped }
 
 /// Camera plus QR decoder for one platform.
 abstract class QrScanner {
-  factory QrScanner(CameraQuality quality) => impl.createScanner(quality);
+  factory QrScanner(CameraQuality quality, {int fps = 30}) =>
+      impl.createScanner(quality, fps);
 
   ValueListenable<ScannerState> get state;
 
