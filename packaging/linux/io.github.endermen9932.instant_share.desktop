@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=InstantShare
+GenericName=QR-Dateiübertragung
+GenericName[en]=QR file transfer
+Comment=Dateien und Text per animierten QR-Codes teilen
+Comment[en]=Share files and text with animated QR codes
+Exec=instantshare %F
+Icon=io.github.endermen9932.instant_share
+Terminal=false
+Categories=Utility;Network;FileTransfer;
+Keywords=QR;share;transfer;offline;LocalSend;Datei;teilen;
+StartupWMClass=io.github.endermen9932.instant_share
+StartupNotify=true

@@ -1,0 +1,229 @@
+name: Build & Release
+
+# Every push to main or a claude/* branch builds all platforms, publishes the
+# files as a GitHub release named after the version in pubspec.yaml and
+# deploys the web app to the gh-pages branch (GitHub Pages).
+on:
+  push:
+    branches: [main, master, 'claude/**']
+    tags: ['v*']
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.47.6
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          version=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Monotonic build number so Android sees every CI build as newer.
+          echo "build=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "Version $version (build ${{ github.run_number }})"
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      # The protocol must compute bit-identical results in the browser.
+      - name: Determinism test in Chrome
+        run: flutter test --platform chrome test/determinism_test.dart
+
+  android:
+    needs: [version, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Signed with the Android debug key (see android/app/build.gradle.kts).
+      - run: flutter build apk --release --build-number=${{ needs.version.outputs.build }}
+      - run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/InstantShare-${{ needs.version.outputs.version }}-android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+
+  linux:
+    needs: [version, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libstdc++-12-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build linux --release --build-number=${{ needs.version.outputs.build }}
+      - name: Package .deb
+        run: |
+          mkdir -p dist
+          packaging/linux/build_deb.sh "${{ needs.version.outputs.version }}" \
+            "dist/instantshare_${{ needs.version.outputs.version }}_amd64.deb"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  windows:
+    needs: [version, test]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release --build-number=${{ needs.version.outputs.build }}
+      - name: Bundle the Visual C++ runtime
+        shell: pwsh
+        run: |
+          $release = "build\windows\x64\runner\Release"
+          foreach ($dll in "msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "vcruntime140.dll", "vcruntime140_1.dll") {
+            $src = Join-Path $env:WINDIR "System32\$dll"
+            if (Test-Path $src) { Copy-Item $src $release }
+          }
+          Get-ChildItem $release
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+          }
+          $candidates = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe")
+          $isccPath = if ($iscc) { $iscc.Source } else { $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1 }
+          if (-not $isccPath) { throw "ISCC.exe not found" }
+          $source = Resolve-Path "build\windows\x64\runner\Release"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $out = Resolve-Path dist
+          & $isccPath "/DAppVersion=${{ needs.version.outputs.version }}" "/DSourceDir=$source" "/DOutputDir=$out" packaging\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          Get-ChildItem dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  web:
+    needs: [version, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # GitHub Pages serves project sites under /<repository name>/.
+      - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/" --build-number=${{ needs.version.outputs.build }}
+      - name: Zip for self-hosting
+        run: |
+          mkdir -p dist
+          (cd build/web && zip -qr "$GITHUB_WORKSPACE/dist/InstantShare-${{ needs.version.outputs.version }}-web.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: dist/*
+      - name: Deploy to GitHub Pages (gh-pages branch)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: build/web
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: Deploy web app ${{ needs.version.outputs.version }}
+
+  release:
+    needs: [version, android, linux, windows, web]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          ls -la dist
+          if [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"; else TAG="v$VERSION"; fi
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          REPO="${{ github.event.repository.name }}"
+          cat > notes.md <<NOTES
+          ## InstantShare $VERSION
+
+          Dateien und Text per animierten QR-Codes teilen – ohne Netzwerk, ohne Konto.
+
+          | Plattform | Datei |
+          |---|---|
+          | Android 7+ | \`InstantShare-$VERSION-android.apk\` |
+          | Ubuntu 24.04 | \`instantshare_${VERSION}_amd64.deb\` |
+          | Windows 10/11 | \`InstantShare-$VERSION-windows-x64-setup.exe\` |
+          | Browser (ohne Installation) | https://$OWNER.github.io/$REPO/ |
+
+          **Ubuntu:** \`sudo apt install ./instantshare_${VERSION}_amd64.deb\`
+
+          **Android:** Die APK ist mit dem Android-Debug-Schlüssel signiert. Jeder CI-Build hat einen
+          eigenen Debug-Schlüssel – vor einem Update die alte Version deinstallieren.
+
+          **Windows:** SmartScreen kann vor dem unsignierten Installer warnen
+          („Weitere Informationen“ → „Trotzdem ausführen“).
+
+          Build ${{ github.run_number }} · Commit ${GITHUB_SHA::7}
+          NOTES
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # Same version again: move the tag to this build and replace the files.
+            git tag -f "$TAG" "$GITHUB_SHA"
+            git push -f origin "refs/tags/$TAG"
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --title "InstantShare $VERSION" --notes-file notes.md --latest
+          else
+            gh release create "$TAG" dist/* --target "$GITHUB_SHA" \
+              --title "InstantShare $VERSION" --notes-file notes.md --latest
+          fi
