@@ -17,6 +17,7 @@ class _PendingFrame {
   ui.Image? image;
   int version = 0;
   bool discarded = false;
+  bool failed = false;
 }
 
 /// Drives the QR animation: keeps a few frames rendered ahead and swaps them
@@ -106,6 +107,9 @@ class TransmitController extends ChangeNotifier {
               frame.image = image;
               frame.version = matrix.version;
             }
+          })
+          .catchError((Object _) {
+            frame.failed = true;
           });
     }
   }
@@ -119,6 +123,12 @@ class TransmitController extends ChangeNotifier {
     const slack = Duration(milliseconds: 4);
     if (last != null && elapsed - last < interval - slack) return;
     final next = _queue.first;
+    if (next.failed) {
+      // Skip the frame; the fountain code does not need any particular one.
+      _queue.removeFirst();
+      _fill();
+      return;
+    }
     final image = next.image;
     if (image == null) return;
     _queue.removeFirst();
